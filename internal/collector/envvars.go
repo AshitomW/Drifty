@@ -9,15 +9,46 @@ import (
 	"github.com/AshitomW/Drifty/internal/models"
 )
 
-// Common secret patterns to mask
+// common secret patterns to match
 var secretPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)(password|passwd|pwd)`),
-	regexp.MustCompile(`(?i)(secret|token|key|api_key|apikey)`),
-	regexp.MustCompile(`(?i)(auth|credential|cred)`),
-	regexp.MustCompile(`(?i)(private|priv)`),
-	regexp.MustCompile(`(?i)(access_token|refresh_token)`),
-	regexp.MustCompile(`(?i)(connection_string|conn_str)`),
+	// Generic password/secret patterns
+	regexp.MustCompile(`(?i)(password|passwd|pwd|passphrase)`),
+	regexp.MustCompile(`(?i)(secret|token|key|api_key|apikey|auth_token|private_key)`),
+	regexp.MustCompile(`(?i)(auth|credential|cred|login|userpass)`),
+	regexp.MustCompile(`(?i)(private|priv|secret_key|secretToken)`),
+	regexp.MustCompile(`(?i)(access_token|refresh_token|id_token)`),
+	regexp.MustCompile(`(?i)(connection_string|conn_str|db_uri|database_url)`),
+
+	// Cloud provider credentials
+	regexp.MustCompile(`(?i)(aws_access_key_id|aws_secret_access_key|aws_session_token)`),
+	regexp.MustCompile(`(?i)(azure_client_secret|azure_client_id|azure_tenant_id)`),
+	regexp.MustCompile(`(?i)(gcp_service_account|gcp_key|google_api_key|google_credentials)`),
+	regexp.MustCompile(`(?i)(digitalocean_token|do_api_key)`),
+	regexp.MustCompile(`(?i)(heroku_api_key|heroku_oauth_token)`),
+
+	// Common AI API keys
+	regexp.MustCompile(`(?i)(openai_api_key|openai_secret)`),
+	regexp.MustCompile(`(?i)(huggingface_api_key|hf_token|hf_api_token)`),
+	regexp.MustCompile(`(?i)(anthropic_api_key|claude_api_key)`),
+	regexp.MustCompile(`(?i)(cohere_api_key|cohere_token)`),
+	regexp.MustCompile(`(?i)(stability_ai_key|stability_api_key)`),
+	regexp.MustCompile(`(?i)(replicate_api_token|replicate_key)`),
+
+	// Database credentials
+	regexp.MustCompile(`(?i)(db_password|db_user|db_secret|db_token)`),
+	regexp.MustCompile(`(?i)(mysql_pass|postgres_password|mongo_uri)`),
+	
+	// JWT, OAuth, and SSO tokens
+	regexp.MustCompile(`(?i)(jwt_secret|jwt_token|oauth_token|sso_token)`),
+
+	// Misc API keys / secrets
+	regexp.MustCompile(`(?i)(stripe_secret|stripe_key|paypal_client_secret|paypal_key)`),
+	regexp.MustCompile(`(?i)(twilio_auth_token|twilio_sid|twilio_key)`),
+	regexp.MustCompile(`(?i)(slack_token|slack_webhook|slack_signing_secret)`),
+	regexp.MustCompile(`(?i)(discord_token|discord_webhook|discord_secret)`),
+	regexp.MustCompile(`(?i)(telegram_bot_token|telegram_api_key)`),
 }
+
 
 func (c *Collector) collectEnvVars(ctx context.Context) (map[string]models.EnvVar, error) {
 	envVars := make(map[string]models.EnvVar)
