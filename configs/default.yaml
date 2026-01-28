@@ -1,0 +1,72 @@
+# Drift Detector Configuration
+
+collector:
+  files:
+    enabled: true
+    paths:
+      - /etc
+      - /opt/app/config
+    exclude_paths:
+      - ".*\\.log$"
+      - ".*\\.tmp$"
+      - "/etc/mtab"
+      - "/etc/resolv.conf"
+    follow_links: false
+    max_depth: 10
+    hash_algo: sha256
+
+  env_vars:
+    enabled: true
+    include:
+      - "^APP_.*"
+      - "^DB_.*"
+      - "^REDIS_.*"
+      - "^AWS_.*"
+    exclude:
+      - ".*SECRET.*"
+      - ".*PASSWORD.*"
+      - ".*KEY.*"
+    mask_secrets: true
+
+  packages:
+    enabled: true
+    managers:
+      - dpkg
+      - pip
+      - npm
+
+  services:
+    enabled: true
+    include:
+      - "nginx"
+      - "postgresql"
+      - "redis"
+      - "app-.*"
+    exclude:
+      - ".*\\.timer$"
+    init_type: systemd
+
+severity_rules:
+  critical_packages:
+    - nginx
+    - postgresql
+    - redis
+  critical_services:
+    - nginx
+    - postgresql
+    - redis
+    - app-server
+  critical_files:
+    - /etc/nginx/nginx.conf
+    - /etc/postgresql/*/postgresql.conf
+  critical_env_vars:
+    - DATABASE_URL
+    - REDIS_URL
+
+output:
+  format: table # json, yaml, table, text
+  color: true
+
+storage:
+  type: file
+  path: /var/lib/drift-detector/snapshots
