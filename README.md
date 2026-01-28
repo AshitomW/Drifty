@@ -1,6 +1,5 @@
 # Drifty — System Drift Collector & Comparator
-
-Drifty is a simple Go tool that takes snapshots of your system's configuration and tells you what has changed. It checks files, installed packages, running services, environment variables, and system information, then compares them to find differences.
+Drifty is a Go tool that takes snapshots of your system configuration—including files, installed packages, running services, environment variables, and system information—and shows what’s changed over time. It’s simple, lightweight, and handy for keeping track of system drift… though it’s probably not perfect yet.
 
 ## Table of Contents
 
