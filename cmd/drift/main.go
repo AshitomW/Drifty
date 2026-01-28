@@ -18,7 +18,7 @@ import (
 var (
 	configFile   string
 	outputFormat string
-	outputFile   string
+
 )
 
 func main() {
