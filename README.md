@@ -33,6 +33,35 @@ This is useful for making sure servers stay configured the way you want them to 
 - **Environment Variables**: Tracks system variables and their values
 - **OS Information**: Records system details like hostname and OS version
 
+## What's Currently Supported
+
+### Package Managers
+
+- **dpkg** (Debian/Ubuntu)
+- **rpm** (RedHat/CentOS/Fedora)
+- **apk** (Alpine Linux)
+- **pip/pip3** (Python packages)
+- **npm** (Node.js packages)
+- **go** (Go modules)
+- **brew** (macOS)
+
+### Service Management
+
+- **systemd** (Modern Linux - default)
+- **sysvinit** (Older Linux systems)
+- **launchd** (macOS - auto-detected)
+
+### Operating Systems
+
+- **Linux** (all major distributions)
+- **macOS** (Darwin)
+- **Windows** (partial support)
+
+### File Hashing Algorithms
+
+- **SHA256** (recommended, default)
+- **MD5** (legacy support)
+
 ## Where Can We Use It?
 
 - **Checking if your server is configured correctly**: Create a baseline snapshot of a properly configured server, then check regularly to make sure nothing has changed
