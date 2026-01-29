@@ -86,7 +86,7 @@ func (r *Reporter) generateTable(report *models.DriftReport) error {
 	fmt.Fprintf(w,"Source:\t%s\n",report.SourceEnv)
 	fmt.Fprintf(w,"Target:\t%s\n",report.TargetEnv)
 	fmt.Fprintf(w,"Generated:\t%s\n",report.Timestamp.Format("2026-01-02 15:04:05 UTC"))
-	fmt.Fprint(w,"Has Drift\t%v\n",report.HasDrift)
+  fmt.Fprintf(w, "Has Drift\t%v\n", report.HasDrift)
 	fmt.Fprintf(w,"\n")
 
 
