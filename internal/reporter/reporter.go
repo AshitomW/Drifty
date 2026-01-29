@@ -85,7 +85,7 @@ func (r *Reporter) generateTable(report *models.DriftReport) error {
 
 	fmt.Fprintf(w,"Source:\t%s\n",report.SourceEnv)
 	fmt.Fprintf(w,"Target:\t%s\n",report.TargetEnv)
-	fmt.Fprintf(w,"Generated:\t%s\n",report.Timestamp.Format("2026-01-02 15:04:05 UTC"))
+	fmt.Fprintf(w,"Generated:\t%s\n",report.Timestamp.Format("2006-01-02 15:04:05 UTC"))
   fmt.Fprintf(w, "Has Drift\t%v\n", report.HasDrift)
 	fmt.Fprintf(w,"\n")
 
@@ -102,30 +102,83 @@ func (r *Reporter) generateTable(report *models.DriftReport) error {
 
 
 		// By Category
-	fmt.Fprintf(w, "By Category:\n")
-	for cat, count := range report.Summary.ByCategory {
-		fmt.Fprintf(w, "  %s:\t%d\n", cat, count)
-	}
-	fmt.Fprintf(w, "\n")
+		fmt.Fprintf(w, "By Category:\n")
+		for cat, count := range report.Summary.ByCategory {
+			fmt.Fprintf(w, "  %s:\t%d\n", cat, count)
+		}
+		fmt.Fprintf(w, "\n")
 
-	// Drifts table
-	if len(report.Drifts) > 0 {
-		fmt.Fprintf(w, "DRIFTS\n")
-		fmt.Fprintf(w, "%s\n", strings.Repeat("-", 80))
-		fmt.Fprintf(w, "SEVERITY\tCATEGORY\tTYPE\tNAME\tMESSAGE\n")
-		fmt.Fprintf(w, "%s\n", strings.Repeat("-", 80))
+		// Drifts table: build an ASCII table with separators and truncation
+		// Flush tabwriter output first so ordering is preserved
+		if err := w.Flush(); err != nil {
+			return err
+		}
+
+		// column widths
+		const (
+			wSeverity = 10
+			wCategory = 12
+			wType = 10
+			wName = 30
+			wSource = 30
+			wTarget = 30
+			wMessage = 40
+		)
+
+		padTrunc := func(s string, width int) string {
+			if len(s) > width {
+				if width > 3 {
+					return s[:width-3] + "..."
+				}
+				return s[:width]
+			}
+			return s + strings.Repeat(" ", width-len(s))
+		}
+
+		makeSep := func() string {
+			parts := []string{
+				strings.Repeat("-", wSeverity),
+				strings.Repeat("-", wCategory),
+				strings.Repeat("-", wType),
+				strings.Repeat("-", wName),
+				strings.Repeat("-", wSource),
+				strings.Repeat("-", wTarget),
+				strings.Repeat("-", wMessage),
+			}
+			return "+" + strings.Join(parts, "+") + "+\n"
+		}
+
+		var sb strings.Builder
+		sb.WriteString("DRIFTS\n")
+		sb.WriteString(makeSep())
+		// header
+		sb.WriteString("|" + padTrunc("SEVERITY", wSeverity) + "|" + padTrunc("CATEGORY", wCategory) + "|" + padTrunc("TYPE", wType) + "|" + padTrunc("NAME", wName) + "|" + padTrunc("SOURCE", wSource) + "|" + padTrunc("TARGET", wTarget) + "|" + padTrunc("MESSAGE", wMessage) + "|\n")
+		sb.WriteString(makeSep())
 
 		for _, drift := range report.Drifts {
-			severity := colorSeverity(drift.Severity)
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-				severity,
-				drift.Category,
-				drift.Type,
-				truncate(drift.Name, 40),
-				truncate(drift.Message, 50),
-			)
+			sev := tableSeverityLabel(drift.Severity)
+			name := padTrunc(drift.Name, wName)
+			srcStr := ""
+			tgtStr := ""
+			if drift.SourceVal != nil {
+				srcStr = padTrunc(formatValue(drift.SourceVal), wSource)
+			} else {
+				srcStr = padTrunc("", wSource)
+			}
+			if drift.TargetVal != nil {
+				tgtStr = padTrunc(formatValue(drift.TargetVal), wTarget)
+			} else {
+				tgtStr = padTrunc("", wTarget)
+			}
+			msg := padTrunc(drift.Message, wMessage)
+
+			sb.WriteString("|" + padTrunc(sev, wSeverity) + "|" + padTrunc(drift.Category, wCategory) + "|" + padTrunc(drift.Type, wType) + "|" + name + "|" + srcStr + "|" + tgtStr + "|" + msg + "|\n")
 		}
-	}
+		sb.WriteString(makeSep())
+
+		if _, err := r.writer.Write([]byte(sb.String())); err != nil {
+			return err
+		}
 
 
 
@@ -225,6 +278,20 @@ func colorSeverity(severity string) string {
 		return "🔵 INFO"
 	default:
 		return severity
+	}
+}
+
+// tableSeverityLabel returns a plain, fixed-width-friendly label for table output
+func tableSeverityLabel(severity string) string {
+	switch severity {
+	case "critical":
+		return "CRITICAL"
+	case "warning":
+		return "WARNING"
+	case "info":
+		return "INFO"
+	default:
+		return strings.ToUpper(severity)
 	}
 }
 

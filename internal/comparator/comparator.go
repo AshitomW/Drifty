@@ -224,7 +224,7 @@ func (c *Comparator) compareEnvVars(source, target map[string]models.EnvVar, rep
 					SourceVal: srcVar.Value,
 					TargetVal: tgtVar.Value,
 					Severity: c.getEnvVarSeverity(name),
-					Message: "Environment variable value changed",
+					Message: "Environment variable value changed.",
 				}
 				report.Drifts = append(report.Drifts, drift)
 			}
