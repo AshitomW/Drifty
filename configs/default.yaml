@@ -28,6 +28,22 @@ collector:
       - ".*KEY.*"
     mask_secrets: true
 
+  process_env_vars:
+    enabled: true
+    processes:
+      - node
+      - php
+      - python
+      - python3
+      - ruby
+      - java
+    max_processes: 20
+    mask_secrets: true
+    exclude:
+      - ".*SECRET.*"
+      - ".*PASSWORD.*"
+      - ".*KEY.*"
+
   packages:
     enabled: true
     managers:

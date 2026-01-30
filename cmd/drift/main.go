@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/AshitomW/Drifty/internal/collector"
@@ -18,7 +19,6 @@ import (
 var (
 	configFile   string
 	outputFormat string
-
 )
 
 func main() {
@@ -46,6 +46,7 @@ func main() {
 func snapshotCmd() *cobra.Command {
 	var name string
 	var outputPath string
+	var format string
 
 	cmd := &cobra.Command{
 		Use:   "snapshot",
@@ -53,7 +54,7 @@ func snapshotCmd() *cobra.Command {
 		Long:  `Collect and save current environment state`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			config := loadConfig()
-			
+
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
 
@@ -74,14 +75,24 @@ func snapshotCmd() *cobra.Command {
 				output = f
 			}
 
-			encoder := json.NewEncoder(output)
-			encoder.SetIndent("", "  ")
-			return encoder.Encode(snapshot)
+			switch format {
+			case "yaml", "yml":
+				encoder := yaml.NewEncoder(output)
+				encoder.SetIndent(2)
+				return encoder.Encode(snapshot)
+			case "table":
+				return generateSnapshotTable(snapshot, output)
+			default:
+				encoder := json.NewEncoder(output)
+				encoder.SetIndent("", "  ")
+				return encoder.Encode(snapshot)
+			}
 		},
 	}
 
 	cmd.Flags().StringVarP(&name, "name", "n", "default", "snapshot name")
 	cmd.Flags().StringVarP(&outputPath, "file", "f", "", "output file path")
+	cmd.Flags().StringVarP(&format, "format", "F", "json", "output format (json, yaml, table)")
 
 	return cmd
 }
@@ -162,7 +173,7 @@ func diffCmd() *cobra.Command {
 			// Output report
 			format := reporter.Format(outputFormat)
 			rep := reporter.New(format, os.Stdout)
-			
+
 			if err := rep.Generate(report); err != nil {
 				return err
 			}
@@ -207,6 +218,11 @@ func loadConfig() *Config {
 				Enabled:     true,
 				MaskSecrets: true,
 			},
+			ProcessEnvVars: models.ProcessEnvVarCollectorConfig{
+				Enabled:      false,
+				MaxProcesses: 10,
+				MaskSecrets:  true,
+			},
 			Packages: models.PackageCollectorConfig{
 				Enabled:  true,
 				Managers: []string{"dpkg", "pip"},
@@ -235,9 +251,128 @@ func loadSnapshot(path string) (*models.EnvironmentSnapshot, error) {
 	}
 
 	var snapshot models.EnvironmentSnapshot
-	if err := json.Unmarshal(data, &snapshot); err != nil {
-		return nil, err
+
+	if strings.HasSuffix(path, ".yaml") || strings.HasSuffix(path, ".yml") {
+		if err := yaml.Unmarshal(data, &snapshot); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := json.Unmarshal(data, &snapshot); err != nil {
+			return nil, err
+		}
 	}
 
 	return &snapshot, nil
+}
+
+func generateSnapshotTable(snapshot *models.EnvironmentSnapshot, output *os.File) error {
+	fmt.Fprintf(output, "\nEnvironment Snapshot\n")
+	fmt.Fprintf(output, "%s\n", strings.Repeat("=", 60))
+	fmt.Fprintf(output, "ID:        %s\n", snapshot.ID)
+	fmt.Fprintf(output, "Name:      %s\n", snapshot.Name)
+	fmt.Fprintf(output, "Hostname:  %s\n", snapshot.Hostname)
+	fmt.Fprintf(output, "Timestamp: %s\n", snapshot.Timestamp.Format("2006-01-02 15:04:05"))
+	fmt.Fprintf(output, "OS:        %s %s (%s)\n", snapshot.OS.Name, snapshot.OS.Version, snapshot.OS.Arch)
+	fmt.Fprintf(output, "Kernel:    %s\n\n", snapshot.OS.Kernel)
+
+	if len(snapshot.EnvVars) > 0 {
+		fmt.Fprintf(output, "Environment Variables (%d)\n", len(snapshot.EnvVars))
+		fmt.Fprintf(output, "%s\n", strings.Repeat("-", 60))
+		for _, name := range sortedKeys(snapshot.EnvVars) {
+			env := snapshot.EnvVars[name]
+			value := env.Value
+			if len(value) > 60 {
+				value = value[:57] + "..."
+			}
+			fmt.Fprintf(output, "  %-30s : %s\n", name, value)
+		}
+		fmt.Fprintln(output)
+	}
+
+	if len(snapshot.ProcessEnvVars) > 0 {
+		fmt.Fprintf(output, "Process Environment Variables (%d processes)\n", len(snapshot.ProcessEnvVars))
+		fmt.Fprintf(output, "%s\n", strings.Repeat("-", 60))
+		for pid, procEnv := range snapshot.ProcessEnvVars {
+			cmdline := procEnv.Cmdline
+			if len(cmdline) > 50 {
+				cmdline = cmdline[:47] + "..."
+			}
+			fmt.Fprintf(output, "  PID: %-8d [%s]\n", pid, cmdline)
+			for _, name := range sortedKeys(procEnv.EnvVars) {
+				env := procEnv.EnvVars[name]
+				value := env.Value
+				if len(value) > 50 {
+					value = value[:47] + "..."
+				}
+				fmt.Fprintf(output, "    %-28s : %s\n", name, value)
+			}
+			fmt.Fprintln(output)
+		}
+	}
+
+	if len(snapshot.Packages) > 0 {
+		fmt.Fprintf(output, "Packages (%d)\n", len(snapshot.Packages))
+		fmt.Fprintf(output, "%s\n", strings.Repeat("-", 60))
+		for _, pkgName := range sortedKeys(snapshot.Packages) {
+			pkg := snapshot.Packages[pkgName]
+			fmt.Fprintf(output, "  %-30s : %-15s (%s)\n", pkg.Name, pkg.Version, pkg.Manager)
+		}
+		fmt.Fprintln(output)
+	}
+
+	if len(snapshot.Services) > 0 {
+		fmt.Fprintf(output, "Services (%d)\n", len(snapshot.Services))
+		fmt.Fprintf(output, "%s\n", strings.Repeat("-", 60))
+		for _, svcName := range sortedKeys(snapshot.Services) {
+			svc := snapshot.Services[svcName]
+			fmt.Fprintf(output, "  %-30s : %-10s (enabled: %v)\n", svc.Name, svc.Status, svc.Enabled)
+		}
+		fmt.Fprintln(output)
+	}
+
+	if len(snapshot.Files) > 0 {
+		fmt.Fprintf(output, "Files (%d)\n", len(snapshot.Files))
+		fmt.Fprintf(output, "%s\n", strings.Repeat("-", 60))
+		for _, path := range sortedKeys(snapshot.Files) {
+			file := snapshot.Files[path]
+			hash := file.Hash
+			if len(hash) > 8 {
+				hash = hash[:8]
+			}
+			fmt.Fprintf(output, "  %-40s : %s\n", file.Path, hash)
+		}
+	}
+
+	return nil
+}
+
+func sortedKeys(m interface{}) []string {
+	var keys []string
+	switch v := m.(type) {
+	case map[string]models.EnvVar:
+		for k := range v {
+			keys = append(keys, k)
+		}
+	case map[string]models.PackageInfo:
+		for k := range v {
+			keys = append(keys, k)
+		}
+	case map[string]models.ServiceInfo:
+		for k := range v {
+			keys = append(keys, k)
+		}
+	case map[string]models.FileInfo:
+		for k := range v {
+			keys = append(keys, k)
+		}
+	}
+
+	for i := 0; i < len(keys); i++ {
+		for j := i + 1; j < len(keys); j++ {
+			if keys[i] > keys[j] {
+				keys[i], keys[j] = keys[j], keys[i]
+			}
+		}
+	}
+	return keys
 }

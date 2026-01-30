@@ -37,7 +37,7 @@ var secretPatterns = []*regexp.Regexp{
 	// Database credentials
 	regexp.MustCompile(`(?i)(db_password|db_user|db_secret|db_token)`),
 	regexp.MustCompile(`(?i)(mysql_pass|postgres_password|mongo_uri)`),
-	
+
 	// JWT, OAuth, and SSO tokens
 	regexp.MustCompile(`(?i)(jwt_secret|jwt_token|oauth_token|sso_token)`),
 
@@ -49,19 +49,18 @@ var secretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(telegram_bot_token|telegram_api_key)`),
 }
 
-
 func (c *Collector) collectEnvVars(ctx context.Context) (map[string]models.EnvVar, error) {
 	envVars := make(map[string]models.EnvVar)
 
 	// Compile include/exclude patterns
 	var includePatterns, excludePatterns []*regexp.Regexp
-	
+
 	for _, pattern := range c.config.EnvVars.Include {
 		if re, err := regexp.Compile(pattern); err == nil {
 			includePatterns = append(includePatterns, re)
 		}
 	}
-	
+
 	for _, pattern := range c.config.EnvVars.Exclude {
 		if re, err := regexp.Compile(pattern); err == nil {
 			excludePatterns = append(excludePatterns, re)
