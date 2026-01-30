@@ -29,7 +29,7 @@ collector:
     mask_secrets: true
 
   process_env_vars:
-    enabled: true
+    enabled: false
     processes:
       - node
       - php
@@ -53,8 +53,8 @@ collector:
 
   network:
     enabled: true
-    interfaces: true
-    routes: true
+    interfaces: false
+    routes: false
     dns: true
     firewall_rules: false
 
@@ -67,20 +67,20 @@ collector:
     socket_path: /var/run/docker.sock
 
   system_resources:
-    enabled: true
+    enabled: false
     cpu: true
     memory: true
     disks: true
     load: true
 
   scheduled_tasks:
-    enabled: true
+    enabled: false
     cron_jobs: true
     systemd_timers: true
     launchd_jobs: true
 
   certificates:
-    enabled: true
+    enabled: false
     paths:
       - /etc/ssl/certs
       - /etc/letsencrypt
@@ -96,7 +96,7 @@ collector:
     days_threshold: 30
 
   users_groups:
-    enabled: true
+    enabled: false
     users: true
     groups: true
     sudo_rules: true
