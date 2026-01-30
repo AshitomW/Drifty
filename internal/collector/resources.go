@@ -88,15 +88,16 @@ func (c *Collector) collectCPUInfoDarwin(ctx context.Context) (models.CPUInfo, e
 			if strings.Contains(line, "CPU usage:") {
 				parts := strings.Fields(line)
 				for i := 0; i < len(parts); i++ {
-					if parts[i] == "user" {
+					word := strings.TrimSuffix(parts[i], ",")
+					if word == "user" {
 						if val, err := strconv.ParseFloat(strings.TrimSuffix(parts[i-1], "%"), 64); err == nil {
 							cpu.User = val
 						}
-					} else if parts[i] == "sys" {
+					} else if word == "sys" {
 						if val, err := strconv.ParseFloat(strings.TrimSuffix(parts[i-1], "%"), 64); err == nil {
 							cpu.System = val
 						}
-					} else if parts[i] == "idle" {
+					} else if word == "idle" {
 						if val, err := strconv.ParseFloat(strings.TrimSuffix(parts[i-1], "%"), 64); err == nil {
 							cpu.Idle = val
 						}
@@ -185,22 +186,43 @@ func (c *Collector) collectMemoryInfoDarwin(ctx context.Context) (models.MemoryI
 		return memory, err
 	}
 
+	var pageSize int64 = 4096
+	var free, active, inactive, speculative, wired int64
 	lines := strings.Split(string(output), "\n")
 	for _, line := range lines {
-		if strings.HasPrefix(line, "Pages free:") {
-			if val, err := strconv.ParseInt(strings.Fields(line)[2], 10, 64); err == nil {
-				memory.Free = val * 4096
+		if strings.Contains(line, "page size of") {
+			parts := strings.Fields(line)
+			if len(parts) >= 4 {
+				if val, err := strconv.ParseInt(strings.TrimSuffix(parts[3], "."), 10, 64); err == nil {
+					pageSize = val
+				}
+			}
+		} else if strings.HasPrefix(line, "Pages free:") {
+			if val, err := strconv.ParseInt(strings.TrimSuffix(strings.Fields(line)[2], "."), 10, 64); err == nil {
+				free = val
 			}
 		} else if strings.HasPrefix(line, "Pages active:") {
-			if val, err := strconv.ParseInt(strings.Fields(line)[2], 10, 64); err == nil {
-				memory.Used = val * 4096
+			if val, err := strconv.ParseInt(strings.TrimSuffix(strings.Fields(line)[2], "."), 10, 64); err == nil {
+				active = val
+			}
+		} else if strings.HasPrefix(line, "Pages inactive:") {
+			if val, err := strconv.ParseInt(strings.TrimSuffix(strings.Fields(line)[2], "."), 10, 64); err == nil {
+				inactive = val
 			}
 		} else if strings.HasPrefix(line, "Pages speculative:") {
-			if val, err := strconv.ParseInt(strings.Fields(line)[2], 10, 64); err == nil {
-				memory.Cached = val * 4096
+			if val, err := strconv.ParseInt(strings.TrimSuffix(strings.Fields(line)[2], "."), 10, 64); err == nil {
+				speculative = val
+			}
+		} else if strings.HasPrefix(line, "Pages wired down:") {
+			if val, err := strconv.ParseInt(strings.TrimSuffix(strings.Fields(line)[3], "."), 10, 64); err == nil {
+				wired = val
 			}
 		}
 	}
+
+	memory.Free = free * pageSize
+	memory.Used = (active + inactive + speculative + wired) * pageSize
+	memory.Cached = (inactive + speculative) * pageSize
 
 	cmd = exec.CommandContext(ctx, "sysctl", "-n", "hw.memsize")
 	output, err = cmd.Output()
@@ -276,11 +298,11 @@ func (c *Collector) collectDiskInfo(ctx context.Context) (map[string]models.Disk
 		}
 
 		fields := strings.Fields(line)
-		if len(fields) < 6 {
+		if len(fields) < 9 {
 			continue
 		}
 
-		mountpoint := fields[5]
+		mountpoint := fields[8]
 		if mountpoint == "/tmp" || strings.HasPrefix(mountpoint, "/tmp") {
 			continue
 		}
@@ -308,17 +330,24 @@ func (c *Collector) collectDiskInfo(ctx context.Context) (map[string]models.Disk
 
 func parseDiskSize(s string) int64 {
 	multiplier := int64(1)
-	if strings.HasSuffix(s, "T") {
+	if strings.HasSuffix(s, "Ti") || strings.HasSuffix(s, "T") {
 		multiplier = 1024 * 1024 * 1024 * 1024
-	} else if strings.HasSuffix(s, "G") {
+		s = strings.TrimSuffix(s, "Ti")
+		s = strings.TrimSuffix(s, "T")
+	} else if strings.HasSuffix(s, "Gi") || strings.HasSuffix(s, "G") {
 		multiplier = 1024 * 1024 * 1024
-	} else if strings.HasSuffix(s, "M") {
+		s = strings.TrimSuffix(s, "Gi")
+		s = strings.TrimSuffix(s, "G")
+	} else if strings.HasSuffix(s, "Mi") || strings.HasSuffix(s, "M") {
 		multiplier = 1024 * 1024
-	} else if strings.HasSuffix(s, "K") {
+		s = strings.TrimSuffix(s, "Mi")
+		s = strings.TrimSuffix(s, "M")
+	} else if strings.HasSuffix(s, "Ki") || strings.HasSuffix(s, "K") {
 		multiplier = 1024
+		s = strings.TrimSuffix(s, "Ki")
+		s = strings.TrimSuffix(s, "K")
 	}
 
-	s = strings.TrimRight(s, "TGMK")
 	if val, err := strconv.ParseInt(s, 10, 64); err == nil {
 		return val * multiplier
 	}

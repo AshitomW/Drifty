@@ -232,7 +232,7 @@ func loadConfig() *Config {
 				FirewallRules: false,
 			},
 			Docker: models.DockerCollectorConfig{
-				Enabled:    false,
+				Enabled:    true,
 				Containers: true,
 				Images:     true,
 				Volumes:    false,

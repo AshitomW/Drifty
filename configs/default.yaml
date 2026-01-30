@@ -59,7 +59,7 @@ collector:
     firewall_rules: false
 
   docker:
-    enabled: false
+    enabled: true
     containers: true
     images: true
     volumes: false
@@ -80,7 +80,7 @@ collector:
     launchd_jobs: true
 
   certificates:
-    enabled: false
+    enabled: true
     paths:
       - /etc/ssl/certs
       - /etc/letsencrypt

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -33,8 +34,13 @@ func (c *Collector) collectDockerConfig(ctx context.Context) (models.DockerConfi
 		return config, nil
 	}
 
-	client := &http.Client{}
-	baseURL := "http://unix" + socketPath
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return net.Dial("unix", socketPath)
+		},
+	}
+	client := &http.Client{Transport: transport}
+	baseURL := "http://localhost"
 
 	if c.config.Docker.Containers {
 		containers, err := c.collectDockerContainers(ctx, client, baseURL)
