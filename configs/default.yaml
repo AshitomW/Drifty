@@ -51,6 +51,56 @@ collector:
       - pip
       - npm
 
+  network:
+    enabled: true
+    interfaces: true
+    routes: true
+    dns: true
+    firewall_rules: false
+
+  docker:
+    enabled: false
+    containers: true
+    images: true
+    volumes: false
+    networks: false
+    socket_path: /var/run/docker.sock
+
+  system_resources:
+    enabled: true
+    cpu: true
+    memory: true
+    disks: true
+    load: true
+
+  scheduled_tasks:
+    enabled: true
+    cron_jobs: true
+    systemd_timers: true
+    launchd_jobs: true
+
+  certificates:
+    enabled: false
+    paths:
+      - /etc/ssl/certs
+      - /etc/letsencrypt
+      - /etc/kubernetes
+      - /usr/local/share/ca-certificates
+    extensions:
+      - .pem
+      - .crt
+      - .cer
+      - .key
+      - .p12
+      - .pfx
+    days_threshold: 30
+
+  users_groups:
+    enabled: true
+    users: true
+    groups: true
+    sudo_rules: true
+
   services:
     enabled: true
     include:

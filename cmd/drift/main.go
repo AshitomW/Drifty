@@ -36,6 +36,7 @@ func main() {
 	rootCmd.AddCommand(snapshotCmd())
 	rootCmd.AddCommand(compareCmd())
 	rootCmd.AddCommand(diffCmd())
+	rootCmd.AddCommand(daemonCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -223,6 +224,43 @@ func loadConfig() *Config {
 				MaxProcesses: 10,
 				MaskSecrets:  true,
 			},
+			Network: models.NetworkCollectorConfig{
+				Enabled:       true,
+				Interfaces:    true,
+				Routes:        true,
+				DNS:           true,
+				FirewallRules: false,
+			},
+			Docker: models.DockerCollectorConfig{
+				Enabled:    false,
+				Containers: true,
+				Images:     true,
+				Volumes:    false,
+				Networks:   false,
+			},
+			SystemResources: models.SystemResourcesCollectorConfig{
+				Enabled: true,
+				CPU:     true,
+				Memory:  true,
+				Disks:   true,
+				Load:    true,
+			},
+			ScheduledTasks: models.ScheduledTasksCollectorConfig{
+				Enabled:       true,
+				CronJobs:      true,
+				SystemdTimers: true,
+				LaunchdJobs:   true,
+			},
+			Certificates: models.CertificateCollectorConfig{
+				Enabled:       false,
+				DaysThreshold: 30,
+			},
+			UsersGroups: models.UserGroupCollectorConfig{
+				Enabled:   true,
+				Users:     true,
+				Groups:    true,
+				SudoRules: true,
+			},
 			Packages: models.PackageCollectorConfig{
 				Enabled:  true,
 				Managers: []string{"dpkg", "pip"},
@@ -341,6 +379,76 @@ func generateSnapshotTable(snapshot *models.EnvironmentSnapshot, output *os.File
 			}
 			fmt.Fprintf(output, "  %-40s : %s\n", file.Path, hash)
 		}
+		fmt.Fprintln(output)
+	}
+
+	if len(snapshot.NetworkConfig.Interfaces) > 0 {
+		fmt.Fprintf(output, "Network Interfaces (%d)\n", len(snapshot.NetworkConfig.Interfaces))
+		fmt.Fprintf(output, "%s\n", strings.Repeat("-", 60))
+		for _, name := range sortedKeys(snapshot.NetworkConfig.Interfaces) {
+			iface := snapshot.NetworkConfig.Interfaces[name]
+			fmt.Fprintf(output, "  %-20s : IP: %v, MAC: %s\n", name, iface.IPAddresses, iface.MACAddress)
+		}
+		fmt.Fprintln(output)
+	}
+
+	if len(snapshot.DockerConfig.Containers) > 0 {
+		fmt.Fprintf(output, "Docker Containers (%d)\n", len(snapshot.DockerConfig.Containers))
+		fmt.Fprintf(output, "%s\n", strings.Repeat("-", 60))
+		for id, cont := range snapshot.DockerConfig.Containers {
+			fmt.Fprintf(output, "  %-30s : %s (%s)\n", cont.Name, cont.Image, cont.Status)
+			_ = id
+		}
+		fmt.Fprintln(output)
+	}
+
+	if snapshot.SystemResources.CPU.Cores > 0 {
+		fmt.Fprintf(output, "System Resources\n")
+		fmt.Fprintf(output, "%s\n", strings.Repeat("-", 60))
+		fmt.Fprintf(output, "  CPU Cores      : %d\n", snapshot.SystemResources.CPU.Cores)
+		fmt.Fprintf(output, "  CPU Usage     : %.1f%%\n", snapshot.SystemResources.CPU.Usage)
+		fmt.Fprintf(output, "  Memory Total   : %d MB\n", snapshot.SystemResources.Memory.Total/1024/1024)
+		fmt.Fprintf(output, "  Memory Usage  : %.1f%%\n", snapshot.SystemResources.Memory.Usage)
+		fmt.Fprintf(output, "  Process Count : %d\n", snapshot.SystemResources.ProcessCount)
+		fmt.Fprintln(output)
+	}
+
+	if len(snapshot.ScheduledTasks.CronJobs) > 0 || len(snapshot.ScheduledTasks.SystemdTimers) > 0 || len(snapshot.ScheduledTasks.LaunchdJobs) > 0 {
+		fmt.Fprintf(output, "Scheduled Tasks\n")
+		fmt.Fprintf(output, "%s\n", strings.Repeat("-", 60))
+		if len(snapshot.ScheduledTasks.CronJobs) > 0 {
+			for name, cron := range snapshot.ScheduledTasks.CronJobs {
+				fmt.Fprintf(output, "  %-20s (cron) : %s\n", name, cron.Schedule)
+				_ = name
+			}
+		}
+		fmt.Fprintln(output)
+	}
+
+	if len(snapshot.Certificates) > 0 {
+		fmt.Fprintf(output, "Certificates (%d)\n", len(snapshot.Certificates))
+		fmt.Fprintf(output, "%s\n", strings.Repeat("-", 60))
+		for path, cert := range snapshot.Certificates {
+			expiryStatus := "VALID"
+			if cert.IsExpired {
+				expiryStatus = "EXPIRED"
+			} else if cert.DaysToExpire < 30 {
+				expiryStatus = "EXPIRING SOON"
+			}
+			fmt.Fprintf(output, "  %-40s : %s (%d days)\n", cert.Domain, expiryStatus, cert.DaysToExpire)
+			_ = path
+		}
+		fmt.Fprintln(output)
+	}
+
+	if len(snapshot.UserGroupConfig.Users) > 0 {
+		fmt.Fprintf(output, "Users (%d)\n", len(snapshot.UserGroupConfig.Users))
+		fmt.Fprintf(output, "%s\n", strings.Repeat("-", 60))
+		for name, user := range snapshot.UserGroupConfig.Users {
+			fmt.Fprintf(output, "  %-20s : UID: %d, Shell: %s\n", name, user.UID, user.Shell)
+			_ = name
+		}
+		fmt.Fprintln(output)
 	}
 
 	return nil
@@ -375,4 +483,108 @@ func sortedKeys(m interface{}) []string {
 		}
 	}
 	return keys
+}
+
+func daemonCmd() *cobra.Command {
+	var baselineFile string
+	var intervalStr string
+	var outputDir string
+
+	cmd := &cobra.Command{
+		Use:   "daemon",
+		Short: "Run drift detection daemon",
+		Long:  `Continuously monitor for drift and generate reports`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if baselineFile == "" {
+				return fmt.Errorf("baseline file is required")
+			}
+
+			config := loadConfig()
+			ctx := context.Background()
+
+			interval, err := time.ParseDuration(intervalStr)
+			if err != nil {
+				return fmt.Errorf("invalid interval format: %w", err)
+			}
+
+			if interval < time.Minute {
+				return fmt.Errorf("interval must be at least 1 minute")
+			}
+
+			fmt.Printf("Starting drift daemon...\n")
+			fmt.Printf("Baseline: %s\n", baselineFile)
+			fmt.Printf("Interval: %s\n", interval)
+			fmt.Printf("Output directory: %s\n", outputDir)
+			fmt.Printf("Press Ctrl+C to stop\n\n")
+
+			baseline, err := loadSnapshot(baselineFile)
+			if err != nil {
+				return fmt.Errorf("loading baseline: %w", err)
+			}
+
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+
+			runCount := 0
+
+			for {
+				select {
+				case <-ctx.Done():
+					fmt.Printf("\nDrift daemon stopped\n")
+					return nil
+				case <-ticker.C:
+					runCount++
+					fmt.Printf("\n[%s] Run #%d\n", time.Now().Format("2006-01-02 15:04:05"), runCount)
+
+					c := collector.New(config.Collector)
+					current, err := c.Collect(ctx, "current")
+					if err != nil {
+						fmt.Printf("Warning: %v\n", err)
+					}
+
+					comp := comparator.New(comparator.SeverityRules{
+						CriticalPackages: config.SeverityRules.CriticalPackages,
+						CriticalServices: config.SeverityRules.CriticalServices,
+						CriticalFiles:    config.SeverityRules.CriticalFiles,
+						CriticalEnvVars:  config.SeverityRules.CriticalEnvVars,
+					})
+
+					report := comp.Compare(baseline, current)
+
+					fmt.Printf("Total drifts: %d (Critical: %d, Warning: %d, Info: %d)\n",
+						report.Summary.TotalDrifts, report.Summary.CriticalCount,
+						report.Summary.WarningCount, report.Summary.InfoCount)
+
+					if report.HasDrift {
+						fmt.Printf("Drift detected!\n")
+
+						if outputDir != "" {
+							reportFile := fmt.Sprintf("%s/drift-%s.json", outputDir, time.Now().Format("20060102-150405"))
+							reportData, err := json.MarshalIndent(report, "", "  ")
+							if err == nil {
+								if err := os.WriteFile(reportFile, reportData, 0644); err != nil {
+									fmt.Printf("Error writing report: %v\n", err)
+								} else {
+									fmt.Printf("Report saved: %s\n", reportFile)
+								}
+							}
+						}
+
+						if report.Summary.CriticalCount > 0 {
+							fmt.Printf("CRITICAL DRIFT DETECTED!\n")
+						}
+					} else {
+						fmt.Printf("No drift detected\n")
+					}
+				}
+			}
+		},
+	}
+
+	cmd.Flags().StringVarP(&baselineFile, "baseline", "b", "", "baseline snapshot file to compare against")
+	cmd.MarkFlagRequired("baseline")
+	cmd.Flags().StringVarP(&intervalStr, "interval", "i", "5m", "interval between checks (e.g., 5m, 1h)")
+	cmd.Flags().StringVarP(&outputDir, "output", "o", "", "output directory for reports")
+
+	return cmd
 }

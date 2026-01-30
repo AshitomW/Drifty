@@ -198,10 +198,16 @@ func (r *Reporter) generateText(report *models.DriftReport) error {
 
 	// Group drifts by category
 	categories := map[string][]models.DriftItem{
-		"file":    {},
-		"envvar":  {},
-		"package": {},
-		"service": {},
+		"file":           {},
+		"envvar":         {},
+		"package":        {},
+		"service":        {},
+		"network":        {},
+		"docker":         {},
+		"resources":      {},
+		"scheduled_task": {},
+		"certificate":    {},
+		"user":           {},
 	}
 
 	for _, drift := range report.Drifts {
@@ -210,10 +216,16 @@ func (r *Reporter) generateText(report *models.DriftReport) error {
 
 	// Print each category
 	categoryNames := map[string]string{
-		"file":    "FILES",
-		"envvar":  "ENVIRONMENT VARIABLES",
-		"package": "PACKAGES",
-		"service": "SERVICES",
+		"file":           "FILES",
+		"envvar":         "ENVIRONMENT VARIABLES",
+		"package":        "PACKAGES",
+		"service":        "SERVICES",
+		"network":        "NETWORK",
+		"docker":         "DOCKER",
+		"resources":      "SYSTEM RESOURCES",
+		"scheduled_task": "SCHEDULED TASKS",
+		"certificate":    "CERTIFICATES",
+		"user":           "USERS/GROUPS",
 	}
 
 	for cat, name := range categoryNames {

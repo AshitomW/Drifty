@@ -54,7 +54,7 @@ func (c *Collector) Collect(ctx context.Context, name string) (*models.Environme
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 
-	errChan := make(chan error, 5)
+	errChan := make(chan error, 12)
 
 	// Collect Files Concurrently
 	if c.config.Files.Enabled {
@@ -138,6 +138,96 @@ func (c *Collector) Collect(ctx context.Context, name string) (*models.Environme
 			snapshot.Services = services
 			mu.Unlock()
 
+		}()
+	}
+
+	if c.config.Network.Enabled {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			network, err := c.collectNetworkConfig(ctx)
+			if err != nil {
+				errChan <- fmt.Errorf("network collection: %w", err)
+				return
+			}
+			mu.Lock()
+			snapshot.NetworkConfig = network
+			mu.Unlock()
+		}()
+	}
+
+	if c.config.Docker.Enabled {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			docker, err := c.collectDockerConfig(ctx)
+			if err != nil {
+				errChan <- fmt.Errorf("docker collection: %w", err)
+				return
+			}
+			mu.Lock()
+			snapshot.DockerConfig = docker
+			mu.Unlock()
+		}()
+	}
+
+	if c.config.SystemResources.Enabled {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resources, err := c.collectSystemResources(ctx)
+			if err != nil {
+				errChan <- fmt.Errorf("system resources collection: %w", err)
+				return
+			}
+			mu.Lock()
+			snapshot.SystemResources = resources
+			mu.Unlock()
+		}()
+	}
+
+	if c.config.ScheduledTasks.Enabled {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			tasks, err := c.collectScheduledTasks(ctx)
+			if err != nil {
+				errChan <- fmt.Errorf("scheduled tasks collection: %w", err)
+				return
+			}
+			mu.Lock()
+			snapshot.ScheduledTasks = tasks
+			mu.Unlock()
+		}()
+	}
+
+	if c.config.Certificates.Enabled {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			certs, err := c.collectCertificates(ctx)
+			if err != nil {
+				errChan <- fmt.Errorf("certificates collection: %w", err)
+				return
+			}
+			mu.Lock()
+			snapshot.Certificates = certs
+			mu.Unlock()
+		}()
+	}
+
+	if c.config.UsersGroups.Enabled {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			users, err := c.collectUserGroupConfig(ctx)
+			if err != nil {
+				errChan <- fmt.Errorf("user/group collection: %w", err)
+				return
+			}
+			mu.Lock()
+			snapshot.UserGroupConfig = users
+			mu.Unlock()
 		}()
 	}
 

@@ -55,6 +55,24 @@ func (c *Comparator) Compare(source, target *models.EnvironmentSnapshot) *models
 
 	c.compareServices(source.Services, target.Services, report)
 
+	// compare Network Config
+	c.compareNetworkConfig(source.NetworkConfig, target.NetworkConfig, report)
+
+	// compare Docker Config
+	c.compareDockerConfig(source.DockerConfig, target.DockerConfig, report)
+
+	// compare System Resources
+	c.compareSystemResources(source.SystemResources, target.SystemResources, report)
+
+	// compare Scheduled Tasks
+	c.compareScheduledTasks(source.ScheduledTasks, target.ScheduledTasks, report)
+
+	// compare Certificates
+	c.compareCertificates(source.Certificates, target.Certificates, report)
+
+	// compare User/Group Config
+	c.compareUserGroupConfig(source.UserGroupConfig, target.UserGroupConfig, report)
+
 	// Update summary
 	c.updateSummary(report)
 
@@ -342,5 +360,260 @@ func (c *Comparator) updateSummary(report *models.DriftReport) {
 
 		report.Summary.ByCategory[drift.Category]++
 		report.Summary.ByType[drift.Type]++
+	}
+}
+
+func (c *Comparator) compareNetworkConfig(source, target models.NetworkConfig, report *models.DriftReport) {
+	for name, srcIface := range source.Interfaces {
+		if tgtIface, exists := target.Interfaces[name]; exists {
+			if srcIface.MACAddress != tgtIface.MACAddress {
+				drift := models.DriftItem{
+					Type:      "modified",
+					Category:  "network",
+					Name:      name + " (interface)",
+					SourceVal: srcIface.MACAddress,
+					TargetVal: tgtIface.MACAddress,
+					Severity:  "warning",
+					Message:   "Interface MAC address changed",
+				}
+				report.Drifts = append(report.Drifts, drift)
+			}
+		} else {
+			drift := models.DriftItem{
+				Type:      "removed",
+				Category:  "network",
+				Name:      name + " (interface)",
+				SourceVal: srcIface,
+				Severity:  "warning",
+				Message:   "Interface removed",
+			}
+			report.Drifts = append(report.Drifts, drift)
+		}
+	}
+
+	for name, tgtIface := range target.Interfaces {
+		if _, exists := source.Interfaces[name]; !exists {
+			drift := models.DriftItem{
+				Type:      "added",
+				Category:  "network",
+				Name:      name + " (interface)",
+				TargetVal: tgtIface,
+				Severity:  "warning",
+				Message:   "Interface added",
+			}
+			report.Drifts = append(report.Drifts, drift)
+		}
+	}
+}
+
+func (c *Comparator) compareDockerConfig(source, target models.DockerConfig, report *models.DriftReport) {
+	for id, srcCont := range source.Containers {
+		if tgtCont, exists := target.Containers[id]; exists {
+			if srcCont.Status != tgtCont.Status || srcCont.State != tgtCont.State {
+				drift := models.DriftItem{
+					Type:      "modified",
+					Category:  "docker",
+					Name:      srcCont.Name,
+					SourceVal: srcCont.Status + " " + srcCont.State,
+					TargetVal: tgtCont.Status + " " + tgtCont.State,
+					Severity:  "warning",
+					Message:   "Container status/state changed",
+				}
+				report.Drifts = append(report.Drifts, drift)
+			}
+		} else {
+			drift := models.DriftItem{
+				Type:      "removed",
+				Category:  "docker",
+				Name:      srcCont.Name,
+				SourceVal: srcCont,
+				Severity:  "info",
+				Message:   "Container removed",
+			}
+			report.Drifts = append(report.Drifts, drift)
+		}
+	}
+
+	for id, tgtCont := range target.Containers {
+		if _, exists := source.Containers[id]; !exists {
+			drift := models.DriftItem{
+				Type:      "added",
+				Category:  "docker",
+				Name:      tgtCont.Name,
+				TargetVal: tgtCont,
+				Severity:  "info",
+				Message:   "Container added",
+			}
+			report.Drifts = append(report.Drifts, drift)
+		}
+	}
+}
+
+func (c *Comparator) compareSystemResources(source, target models.SystemResources, report *models.DriftReport) {
+	if source.CPU.Cores != target.CPU.Cores {
+		drift := models.DriftItem{
+			Type:      "modified",
+			Category:  "resources",
+			Name:      "CPU cores",
+			SourceVal: source.CPU.Cores,
+			TargetVal: target.CPU.Cores,
+			Severity:  "critical",
+			Message:   "CPU core count changed",
+		}
+		report.Drifts = append(report.Drifts, drift)
+	}
+
+	if source.Memory.Total != target.Memory.Total {
+		drift := models.DriftItem{
+			Type:      "modified",
+			Category:  "resources",
+			Name:      "Memory total",
+			SourceVal: source.Memory.Total,
+			TargetVal: target.Memory.Total,
+			Severity:  "critical",
+			Message:   "Total memory changed",
+		}
+		report.Drifts = append(report.Drifts, drift)
+	}
+}
+
+func (c *Comparator) compareScheduledTasks(source, target models.ScheduledTasks, report *models.DriftReport) {
+	for name, srcTask := range source.CronJobs {
+		if tgtTask, exists := target.CronJobs[name]; exists {
+			if srcTask.Schedule != tgtTask.Schedule || srcTask.Command != tgtTask.Command {
+				drift := models.DriftItem{
+					Type:      "modified",
+					Category:  "scheduled_task",
+					Name:      name + " (cron)",
+					SourceVal: srcTask.Command,
+					TargetVal: tgtTask.Command,
+					Severity:  "warning",
+					Message:   "Cron job changed",
+				}
+				report.Drifts = append(report.Drifts, drift)
+			}
+		} else {
+			drift := models.DriftItem{
+				Type:      "removed",
+				Category:  "scheduled_task",
+				Name:      name + " (cron)",
+				SourceVal: srcTask,
+				Severity:  "warning",
+				Message:   "Cron job removed",
+			}
+			report.Drifts = append(report.Drifts, drift)
+		}
+	}
+
+	for name, tgtTask := range target.CronJobs {
+		if _, exists := source.CronJobs[name]; !exists {
+			drift := models.DriftItem{
+				Type:      "added",
+				Category:  "scheduled_task",
+				Name:      name + " (cron)",
+				TargetVal: tgtTask,
+				Severity:  "warning",
+				Message:   "Cron job added",
+			}
+			report.Drifts = append(report.Drifts, drift)
+		}
+	}
+}
+
+func (c *Comparator) compareCertificates(source, target map[string]models.Certificate, report *models.DriftReport) {
+	for path, srcCert := range source {
+		if tgtCert, exists := target[path]; exists {
+			if srcCert.Fingerprint != tgtCert.Fingerprint {
+				drift := models.DriftItem{
+					Type:      "modified",
+					Category:  "certificate",
+					Name:      path,
+					SourceVal: srcCert.Fingerprint,
+					TargetVal: tgtCert.Fingerprint,
+					Severity:  "warning",
+					Message:   "Certificate changed",
+				}
+				report.Drifts = append(report.Drifts, drift)
+			}
+			if !srcCert.IsExpired && tgtCert.IsExpired {
+				drift := models.DriftItem{
+					Type:      "modified",
+					Category:  "certificate",
+					Name:      path,
+					SourceVal: "valid",
+					TargetVal: "expired",
+					Severity:  "critical",
+					Message:   "Certificate expired",
+				}
+				report.Drifts = append(report.Drifts, drift)
+			}
+		} else {
+			drift := models.DriftItem{
+				Type:      "removed",
+				Category:  "certificate",
+				Name:      path,
+				SourceVal: srcCert,
+				Severity:  "warning",
+				Message:   "Certificate removed",
+			}
+			report.Drifts = append(report.Drifts, drift)
+		}
+	}
+
+	for path, tgtCert := range target {
+		if _, exists := source[path]; !exists {
+			drift := models.DriftItem{
+				Type:      "added",
+				Category:  "certificate",
+				Name:      path,
+				TargetVal: tgtCert,
+				Severity:  "info",
+				Message:   "Certificate added",
+			}
+			report.Drifts = append(report.Drifts, drift)
+		}
+	}
+}
+
+func (c *Comparator) compareUserGroupConfig(source, target models.UserGroupConfig, report *models.DriftReport) {
+	for name, srcUser := range source.Users {
+		if tgtUser, exists := target.Users[name]; exists {
+			if srcUser.UID != tgtUser.UID {
+				drift := models.DriftItem{
+					Type:      "modified",
+					Category:  "user",
+					Name:      name,
+					SourceVal: srcUser.UID,
+					TargetVal: tgtUser.UID,
+					Severity:  "warning",
+					Message:   "User UID changed",
+				}
+				report.Drifts = append(report.Drifts, drift)
+			}
+		} else {
+			drift := models.DriftItem{
+				Type:      "removed",
+				Category:  "user",
+				Name:      name,
+				SourceVal: srcUser,
+				Severity:  "warning",
+				Message:   "User removed",
+			}
+			report.Drifts = append(report.Drifts, drift)
+		}
+	}
+
+	for name, tgtUser := range target.Users {
+		if _, exists := source.Users[name]; !exists {
+			drift := models.DriftItem{
+				Type:      "added",
+				Category:  "user",
+				Name:      name,
+				TargetVal: tgtUser,
+				Severity:  "warning",
+				Message:   "User added",
+			}
+			report.Drifts = append(report.Drifts, drift)
+		}
 	}
 }
